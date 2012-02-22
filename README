@@ -1,0 +1,87 @@
+DProfiler
+---------
+ Disk Throughput Profiler
+
+ Copyright 2011-2012 (c) Felipe Franciosi <felipe@paradoxo.org>
+
+ Disclaimer:
+  This program is free software: you can redistribute it and/or modify
+  it under the terms of the GNU General Public License as published by
+  the Free Software Foundation, either version 3 of the License, or
+  (at your option) any later version.
+
+  This program is distributed in the hope that it will be useful,
+  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  GNU General Public License for more details.
+
+  You should have received a copy of the GNU General Public License
+  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+
+ Description:
+  This program reads or writes to an entire block device and records
+  the time (in us) it took to process a certain amount of data.
+  It features variable block sizes and grouping of results. This allows
+  easier comparison of different experiments. For example, it is possible
+  to have the average throughput at every 32MB of data by reading 32MB
+  blocks (-b $[ 32 * 1048576] -g 1), 16MB blocks (-b $[ 16 * 1048576 ] -g 2)
+  or even 1MB blocks (-b 1048576 -g 32).
+
+  The output is in the form: O T, where:
+   O - Offset (in bytes) where the operation was performed
+   T - Time (us) to complete the operation
+
+   The time is printed in microseconds and includes *only* the time spent
+   during the I/O operations.
+
+
+ Compiling:
+  gcc -o dprofiler dprofiler.c -lrt -Wall -O3 -s
+
+
+ Usage:
+  ./dprofiler < -r | -w > < -d dev_name > [ -hyv[v] ] [ -b <buf_size> ] [ -g <group_size> ] [ -o <datafile> ]
+
+     One of the following operation modes must be selected:
+     -r             Read from device.
+     -w             Write to device (*CAUTION* This will overwrite the device).
+
+     The device must be specified as follows:
+     -d <dev_name>  For example: /dev/sdb
+
+     The following options are available for both reading and writing:
+     -b <buf_size>  Buffer size, in bytes.
+     -g <grp_size>  Amount of samples to group together in the output report.
+     -o <datafile>  Name of the file to write the results (preferably on a different device
+                                                           than the one being profiled).
+     -h             Print the program usage.
+     -y             Open device with O_SYNC (see open(2) man page).
+     -v             Print details of the device to stderr.
+     -vv            Same as above, plus report to stdout apart from <datafile>.
+ 
+
+ Changelog:
+  2011.10.06 - Felipe Franciosi
+   - Program creation.
+   - Recycled old code into this project.
+
+  2011.11.01 - Felipe Franciosi
+   - Got rid of LARGEFILE64_SOURCE and started using FILE_OFFSET_BITS.
+   - Fixed data types to 64 bit architectures compatilibity.
+   - Print usage to stderr.
+   - Replaced perror()s to correct locations.
+   - Minor corrections.
+   - Made "-d" mandatory.
+
+  2012.01.24 - Felipe Franciosi
+   - Times are now printed in 'ms' for compatibility with yngwie.
+
+  2012.02.22 - Felipe Franciosi
+   - Fixed compatibility parameters.
+   - Made it available on github.
+
+
+ TODO:
+  - Implement random seeks (read/write).
+  - Implement random content writes (currently only write zeros).
