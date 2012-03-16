@@ -235,7 +235,7 @@ int main(int argc, char **argv){
 	}
 
 	// If wzero has been turned on, check if writing
-	if ((wzero != 0) && (io_op != IO_OP_WRITE)){
+	if ((wzero == 1) && (io_op != IO_OP_WRITE)){
 		fprintf(stderr, "%s: Error, \"-z\" can only be used with \"-w\".\n\n", argv[0]);
 		usage(argv[0]);
 		err = 1;
@@ -269,6 +269,11 @@ int main(int argc, char **argv){
 	// Set SYNC flag to default if it hasn't been specified
 	if (osync == -1){
 		osync = MT_OSYNC;
+	}
+
+	// Set write behaviour to default if it hasn't been specified
+	if (wzero == -1){
+		wzero = MT_WZERO;
 	}
 
 	// Open block device
