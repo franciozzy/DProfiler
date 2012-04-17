@@ -26,6 +26,7 @@
 // Global definitions (don't mess with those)
 #define	_GNU_SOURCE
 #define	_FILE_OFFSET_BITS	64
+#define	IO_OP_INFO		0
 #define	IO_OP_READ		1
 #define	IO_OP_WRITE		2
 #define MT_PROGNAME		"Disk Throughput Profiler"
@@ -51,6 +52,8 @@
 #define	MT_BUFSIZE	1024*1024	// Default 1MB i/o operations
 #define	MT_WZERO	1		// Default write behaviour
 #define	MT_OSYNC	0		// Default usage of O_SYNC flag upon open()
+#define MT_MBSPR	0		// Default output is 'us' and not MB/s
+#define	MT_IO_OP	IO_OP_INFO	// Default IO_OP to INFO
 
 // Auxiliary functions
 void usage(char *argv0){
@@ -61,19 +64,25 @@ void usage(char *argv0){
 	for (i=0; i<strlen(MT_PROGNAME); i++) fprintf(stderr, "-");
 	fprintf(stderr, "\n%s\n", MT_PROGNAME);
 	for (i=0; i<strlen(MT_PROGNAME); i++) fprintf(stderr, "-");
-	fprintf(stderr, "\nUsage: %s < -r | -w > < -d dev_name > [ -h ] [ -v[v] ] [ -b <buf_size> ] [ -g <group_size> ] [ -o <datafile> ]\n", argv0);
-	fprintf(stderr, "       -r | -w         Read from or write to device.\n");
-	fprintf(stderr, "       -d dev_name     Specify block device to operate on.\n");
-	fprintf(stderr, "                       !!WARNING!! Be careful when using -w, as the device will be overwritten.\n");
-	fprintf(stderr, "       -h              Print this help message and quit.\n");
-//	fprintf(stderr, "       -z              When writing, write only zeros instead of random data (which is default).\n");
-	fprintf(stderr, "       -v              Increase verbose level (may be used multiple times).\n");
-	fprintf(stderr, "       -b buf_size     Specify different buffer size (in bytes, default=%d).\n", MT_BUFSIZE);
-	fprintf(stderr, "       -g group_size   Group measurements together and average results accordingly (default=1).\n");
-	fprintf(stderr, "       -o datafile     Specify output datafile name (default=%s<pid>.dat).\n", MT_DATAFILE);
-	fprintf(stderr, "       -y              Open device with O_SYNC (see open(2) man page).\n");
+	fprintf(stderr, "\nUsage: %s < -r | -w | -i > < -d dev_name >\n", argv0);
+	fprintf(stderr, "         [ -hmv[v] ] [ -b <buf_size> ] [ -g <grp_size> ] [ -o <datafile> ]\n");
+	fprintf(stderr, "       -r | -w | -i  Read from, write to or simply print info of the device.\n");
+	fprintf(stderr, "                     (default is -i)\n");
+	fprintf(stderr, "       -d dev_name   Specify block device to operate on.\n");
+	fprintf(stderr, "                     !!WARNING!!\n");
+	fprintf(stderr, "                     When using -w, as the device will be overwritten.\n");
+	fprintf(stderr, "       -h            Print this help message and quit.\n");
+//	fprintf(stderr, "       -z            When writing, write only zeros instead of random data (default is random data).\n");
+	fprintf(stderr, "       -m            Output in MB/s instead of us.\n");
+	fprintf(stderr, "       -v            Increase verbose level (may be used multiple times).\n");
+	fprintf(stderr, "       -b buf_size   Specify different buffer size.\n");
+	fprintf(stderr, "                     (in bytes, default is %d)\n", MT_BUFSIZE);
+	fprintf(stderr, "       -g grp_size   Group measurements and average results accordingly.\n");
+	fprintf(stderr, "                     (default is 1)\n");
+	fprintf(stderr, "       -o datafile   Specify output datafile name.");
+	fprintf(stderr, "                     (default=%s<pid>.dat)\n", MT_DATAFILE);
+	fprintf(stderr, "       -y            Open device with O_SYNC (see open(2) man page).\n");
 }
-
 
 // Main function
 int main(int argc, char **argv){
@@ -82,9 +91,10 @@ int main(int argc, char **argv){
 	// IO related
 	char		*buf = NULL;	// IO Buffer
 	off_t		bufsize = 0;	// IO Buffer size
-	char		io_op = -1;	// IO Operation (IO_OP_READ or IO_OP_WRITE)
+	char		io_op = -1;	// IO Operation
 	char		wzero = -1;	// Write zeros instead of random data
 	char		osync = -1;	// Open device with O_SYNC
+	char		mbspr = -1;	// Output format (MB/s or us)
 
 	// Datafile related
 	FILE		*datafp = NULL;	// Data file file pointer
@@ -114,15 +124,9 @@ int main(int argc, char **argv){
 	int		verbose = 0;	// Verbose level
 	int		i,j;		// Temporary integers
 
-	
 	// Fetch arguments
-	while ((i = getopt(argc, argv, "hvd:b:g:o:rwzy")) != -1){
+	while ((i = getopt(argc, argv, "rwid:hmzvb:g:o:y")) != -1){
 		switch (i){
-			case 'h':
-				// Print help
-				usage(argv[0]);
-				goto out;
-
 			case 'r':
 				// Set io_op to read, if unset
 				if (io_op != -1){
@@ -143,6 +147,16 @@ int main(int argc, char **argv){
 				io_op = IO_OP_WRITE;
 				break;
 
+			case 'i':
+				// Set io_op to info, if unset
+				if (io_op != -1){
+					fprintf(stderr, "%s: Invalid argument \"-i\", operation mode already set.\n", argv[0]);
+					err = 1;
+					goto out;
+				}
+				io_op = IO_OP_INFO;
+				break;
+
 			case 'd':
 				// Set a block device
 				if (bdevfn){
@@ -150,13 +164,28 @@ int main(int argc, char **argv){
 					err = 1;
 					goto out;
 				}
-				if ((bdevfn = (char *)malloc(strlen(optarg)+1)) == NULL){
-					perror("malloc");
+				if (asprintf(&bdevfn, "%s", optarg) == -1){
+					perror("asprintf");
 					fprintf(stderr, "%s: Error allocating memory for block device name.\n", argv[0]);
+					bdevfn = NULL;
 					err = 1;
 					goto out;
 				}
-				sprintf(bdevfn, "%s", optarg);
+				break;
+
+			case 'h':
+				// Print help
+				usage(argv[0]);
+				goto out;
+
+			case 'm':
+				// Set output format
+				if (mbspr != -1){
+					fprintf(stderr, "%s: Invalid argument \"-m\", already set to print in MB/s.\n", argv[0]);
+					err =1;
+					goto out;
+				}
+				mbspr = 1;
 				break;
 
 			case 'z':
@@ -173,7 +202,6 @@ int main(int argc, char **argv){
 				// Increase verbose level
 				verbose++;
 				break;
-
 
 			case 'b':
 				// Set a different buffer size
@@ -227,19 +255,8 @@ int main(int argc, char **argv){
 	}
 
 	// Verify if operation mode was set
-	if ((io_op != IO_OP_READ) && (io_op != IO_OP_WRITE)){
-		fprintf(stderr, "%s: Error, you must specify \"-r\" or \"-w\".\n\n", argv[0]);
-		usage(argv[0]);
-		err = 1;
-		goto out;
-	}
-
-	// If wzero has been turned on, check if writing
-	if ((wzero == 1) && (io_op != IO_OP_WRITE)){
-		fprintf(stderr, "%s: Error, \"-z\" can only be used with \"-w\".\n\n", argv[0]);
-		usage(argv[0]);
-		err = 1;
-		goto out;
+	if (io_op == -1){
+		io_op = MT_IO_OP;
 	}
 
 	// Verify if a block device has been specified
@@ -250,15 +267,23 @@ int main(int argc, char **argv){
 		goto out;
 	}
 
+	// If wzero has been turned on, check if writing (double check if the user knows what he is doing)
+	if ((wzero == 1) && (io_op != IO_OP_WRITE)){
+		fprintf(stderr, "%s: Error, \"-z\" can only be used with \"-w\".\n\n", argv[0]);
+		usage(argv[0]);
+		err = 1;
+		goto out;
+	}
+
 	// Set datafn to default if it hasn't been specified
 	if (datafn == NULL){
-		if ((datafn = (char *)malloc(strlen(MT_DATAFILE)+20)) == NULL){	// 20 = ceiling(len of pid_t + ".dat" + '\0')
-			perror("malloc");
+		if (asprintf(&datafn, "%s%d.dat", MT_DATAFILE, getpid()) == -1){
+			perror("asprintf");
 			fprintf(stderr, "%s: Error allocating memory for data file name.\n", argv[0]);
+			datafn = NULL;
 			err = 1;
 			goto out;
 		}
-		snprintf(datafn, strlen(MT_DATAFILE)+20, "%s%d.dat", MT_DATAFILE, getpid());
 	}
 
 	// Set buffer size to default if it hasn't been specified
@@ -274,6 +299,11 @@ int main(int argc, char **argv){
 	// Set write behaviour to default if it hasn't been specified
 	if (wzero == -1){
 		wzero = MT_WZERO;
+	}
+
+	// Set default output behaviour
+	if (mbspr == -1){
+		mbspr = MT_MBSPR;
 	}
 
 	// Open block device
@@ -316,7 +346,7 @@ int main(int argc, char **argv){
 	}
 
 	// Open datafile
-	if ((datafp = fopen(datafn, "w")) == NULL){
+	if ((io_op != IO_OP_INFO) && ((datafp = fopen(datafn, "w")) == NULL)){
 		perror("fopen");
 		fprintf(stderr, "%s: Error opening datafile \"%s\" for writting.\n", argv[0], datafn);
 		err = 1;
@@ -324,7 +354,7 @@ int main(int argc, char **argv){
 	}
 
 	// Print verbose stuff
-	if (verbose){
+	if (verbose || io_op == IO_OP_INFO){
 		for (j=0; j<strlen(MT_PROGNAME); j++) fprintf(stderr, "-");
 		fprintf(stderr, "\n%s\n", MT_PROGNAME);
 		for (j=0; j<strlen(MT_PROGNAME); j++) fprintf(stderr, "-");
@@ -338,6 +368,11 @@ int main(int argc, char **argv){
 		fflush(stderr);
 	}
 
+	// End here if IO_OP_INFO
+	if (io_op == IO_OP_INFO){
+		goto out;
+	}
+
 	// Initialize loop
 	bytesioed = 1;
 	gcount = gsize;
@@ -347,6 +382,7 @@ int main(int argc, char **argv){
 	// IO device until its end
 	while(bytesioed > 0){
 		// Prepare buffer
+#if 0
 		switch(io_op){
 			case IO_OP_WRITE:
 				// Decide what to write
@@ -363,14 +399,10 @@ int main(int argc, char **argv){
 				// Reset read buffer
 				memset(buf, 0, bufsize);
 				break;
-			default:
-				// Invalid IO operation
-				fprintf(stderr, "%s: Error, unsupported IO operation (code %d).\n", argv[0], io_op);
-				free(buf);
-				close(bdevfd);
-				fclose(datafp);
-				return(1);
 		}
+#else
+		memset(buf, 0, bufsize);
+#endif
 
 		// Perform IO op
 		if (io_op == IO_OP_WRITE){
@@ -382,10 +414,7 @@ int main(int argc, char **argv){
 
 			// Stop the clock
 			clock_gettime(MT_CLOCK, &st2);
-
-		}else
-		/* if (io_op == IO_OP_READ) // needed if more IO_codes are supported in the future */
-		{
+		}else{
 			// Start the clock
 			clock_gettime(MT_CLOCK, &st1);
 
@@ -406,14 +435,18 @@ int main(int argc, char **argv){
 		// Print it whenever group is complete
 		if (--gcount == 0){
 			// Write to data file
-			sprintf(buf, "%013"PRIu64" %"PRIu64"\n", gstart, timeacc);
+			if (mbspr == 1){
+				sprintf(buf, "%013"PRIu64" %f\n", gstart, (double)(gsize*bufsize)/(double)timeacc);
+			}else{
+				sprintf(buf, "%013"PRIu64" %"PRIu64"\n", gstart, timeacc);
+			}
 			fputs(buf, datafp);
 			fflush(datafp);
 
 			// If verbose level is 2, also print on stdout
 			if (verbose > 1)
 			{
-				fprintf(stdout, "%013llu %llu\n", gstart, timeacc);
+				fprintf(stdout, "%s", buf);
 				fflush(stdout);
 			}
 
