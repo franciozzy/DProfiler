@@ -42,7 +42,7 @@ DProfiler
 
  Usage:
   ./dprofiler < -r | -w | -i > < -d dev_name >
-             [ -hmyv[v] ] [ -b <buf_size> ] [ -g <grp_size> ] [ -o <datafile> ]
+             [ -hamyv[v] ] [ -b <buf_size> ] [ -g <grp_size> ] [ -o <datafile> ]
 
      One of the following operation modes must be selected:
      -r             Read from device.
@@ -60,6 +60,7 @@ DProfiler
      -o <datafile>  Name of the file to write the results.
                     (preferably on a different device than the one profiled)
      -h             Print the program usage.
+     -a             Print cumulative average rate (if -r was also used).
      -m             Set output to MB/s instead of microseconds.
      -y             Open device with O_SYNC (see open(2) man page).
      -v             Print details of the device to stderr.
