@@ -65,13 +65,14 @@ void usage(char *argv0){
 	fprintf(stderr, "\n%s\n", MT_PROGNAME);
 	for (i=0; i<strlen(MT_PROGNAME); i++) fprintf(stderr, "-");
 	fprintf(stderr, "\nUsage: %s < -r | -w | -i > < -d dev_name >\n", argv0);
-	fprintf(stderr, "         [ -hmv[v] ] [ -b <buf_size> ] [ -g <grp_size> ] [ -o <datafile> ]\n");
+	fprintf(stderr, "         [ -hamv[v] ] [ -b <buf_size> ] [ -g <grp_size> ] [ -o <datafile> ]\n");
 	fprintf(stderr, "       -r | -w | -i  Read from, write to or simply print info of the device.\n");
 	fprintf(stderr, "                     (default is -i)\n");
 	fprintf(stderr, "       -d dev_name   Specify block device to operate on.\n");
 	fprintf(stderr, "                     !!WARNING!!\n");
 	fprintf(stderr, "                     When using -w, as the device will be overwritten.\n");
 	fprintf(stderr, "       -h            Print this help message and quit.\n");
+	fprintf(stderr, "       -a            Write cumulative average rate (only if writing MB/s).\n");
 //	fprintf(stderr, "       -z            When writing, write only zeros instead of random data (default is random data).\n");
 	fprintf(stderr, "       -m            Output in MB/s instead of us.\n");
 	fprintf(stderr, "       -v            Increase verbose level (may be used multiple times).\n");
@@ -118,15 +119,22 @@ int main(int argc, char **argv){
 	u_int64_t	timeacc;	// Time accumulator for grouping
 	struct timespec	st1;		// Start time
 	struct timespec	st2;		// Finish time
+	double      rateacc = 0.0;  // Accumulated rate (for cumulative mean)
+	u_int64_t   ngroups = 0;    // Total number of groups seen so far
 
 	// General
 	int		err = 0;	// Return error code
 	int		verbose = 0;	// Verbose level
 	int		i,j;		// Temporary integers
+	char    use_avg = 0; // Write cumulative average rate
 
 	// Fetch arguments
-	while ((i = getopt(argc, argv, "rwid:hmzvb:g:o:y")) != -1){
+	while ((i = getopt(argc, argv, "arwid:hmzvb:g:o:y")) != -1){
 		switch (i){
+			case 'a':
+				// Keep cumulative average of the rates
+				use_avg = 1;
+				break;
 			case 'r':
 				// Set io_op to read, if unset
 				if (io_op != -1){
@@ -436,7 +444,13 @@ int main(int argc, char **argv){
 		if (--gcount == 0){
 			// Write to data file
 			if (mbspr == 1){
-				sprintf(buf, "%013"PRIu64" %f\n", gstart, (double)(gsize*bufsize)/(double)timeacc);
+				if (use_avg){
+					++ngroups;
+					rateacc += (double)(gsize*bufsize)/(double)timeacc;
+					sprintf(buf, "%013"PRIu64" %f %f\n", gstart, (double)(gsize*bufsize)/(double)timeacc, rateacc/(double)ngroups);
+				}else{
+					sprintf(buf, "%013"PRIu64" %f\n", gstart, (double)(gsize*bufsize)/(double)timeacc);
+				}
 			}else{
 				sprintf(buf, "%013"PRIu64" %"PRIu64"\n", gstart, timeacc);
 			}
