@@ -340,7 +340,7 @@ int main(int argc, char **argv){
 	// Allocates rbuf according to the systems page size
 	if (posix_memalign((void **)&(buf), psize, bufsize) != 0){
 		//perror("posix_memalign"); // posix_memalign doesn't set errno.
-		fprintf(stderr, "%s: Error malloc'ing aligned buf, %llu bytes long.\n", argv[0], bufsize);
+		fprintf(stderr, "%s: Error malloc'ing aligned buf, %"PRIu64" bytes long.\n", argv[0], bufsize);
 		err = 1;
 		goto out;
 	}
@@ -358,10 +358,10 @@ int main(int argc, char **argv){
 		for (j=0; j<strlen(MT_PROGNAME); j++) fprintf(stderr, "-");
 		fprintf(stderr, "\n%s\n", MT_PROGNAME);
 		for (j=0; j<strlen(MT_PROGNAME); j++) fprintf(stderr, "-");
-		fprintf(stderr, "\nDevice \"%s\" has %llu bytes\n", bdevfn, bdevsize);
+		fprintf(stderr, "\nDevice \"%s\" has %"PRIu64" bytes\n", bdevfn, bdevsize);
 		fprintf(stderr, "System pagesize is %d bytes long.\n", psize);
 		fprintf(stderr, "Got aligned buffer at %p.\n", buf);
-		fprintf(stderr, "Buffer is %llu bytes long.\n", bufsize);
+		fprintf(stderr, "Buffer is %"PRIu64" bytes long.\n", bufsize);
 		fprintf(stderr, "Grouped at every %d outputs.\n", gsize);
 		fprintf(stderr, "Datafile is \"%s\".\n", datafn);
 		fprintf(stderr, "------------------------------------------\n");
